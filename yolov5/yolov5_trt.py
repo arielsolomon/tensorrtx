@@ -1,6 +1,6 @@
-"""
+'''
 An example that uses TensorRT's Python api to make inferences.
-"""
+'''
 import ctypes
 import os
 import shutil
@@ -32,7 +32,7 @@ def get_img_path_batches(batch_size, img_dir):
     return ret
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=None):
-    """
+    '''
     description: Plots one bounding box on image img,
                  this function comes from YoLov5 project.
     param: 
@@ -44,7 +44,7 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=None):
     return:
         no return
 
-    """
+    '''
     tl = (
         line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1
     )  # line/font thickness
@@ -69,9 +69,9 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=None):
 
 
 class YoLov5TRT(object):
-    """
+    '''
     description: A YOLOv5 class that warps TensorRT ops, preprocess and postprocess ops.
-    """
+    '''
 
     def __init__(self, engine_file_path):
         # Create a Context on this device,
@@ -81,7 +81,7 @@ class YoLov5TRT(object):
         runtime = trt.Runtime(TRT_LOGGER)
 
         # Deserialize the engine from file
-        with open(engine_file_path, "rb") as f:
+        with open(engine_file_path, 'rb') as f:
             engine = runtime.deserialize_cuda_engine(f.read())
         context = engine.create_execution_context()
 
@@ -174,7 +174,7 @@ class YoLov5TRT(object):
                 plot_one_box(
                     box,
                     batch_image_raw[i],
-                    label="{}:{:.2f}".format(
+                    label='{}:{:.2f}'.format(
                         categories[int(result_classid[j])], result_scores[j]
                     ),
                 )
@@ -185,21 +185,21 @@ class YoLov5TRT(object):
         self.ctx.pop()
         
     def get_raw_image(self, image_path_batch):
-        """
+        '''
         description: Read an image from image path
-        """
+        '''
         for img_path in image_path_batch:
             yield cv2.imread(img_path)
         
     def get_raw_image_zeros(self, image_path_batch=None):
-        """
+        '''
         description: Ready data for warmup
-        """
+        '''
         for _ in range(self.batch_size):
             yield np.zeros([self.input_h, self.input_w, 3], dtype=np.uint8)
 
     def preprocess_image(self, raw_bgr_image):
-        """
+        '''
         description: Convert BGR image to RGB,
                      resize and pad it to target size, normalize to [0,1],
                      transform to NCHW format.
@@ -210,7 +210,7 @@ class YoLov5TRT(object):
             image_raw: the original image
             h: original height
             w: original width
-        """
+        '''
         image_raw = raw_bgr_image
         h, w, c = image_raw.shape
         image = cv2.cvtColor(image_raw, cv2.COLOR_BGR2RGB)
@@ -242,12 +242,12 @@ class YoLov5TRT(object):
         image = np.transpose(image, [2, 0, 1])
         # CHW to NCHW format
         image = np.expand_dims(image, axis=0)
-        # Convert the image to row-major order, also known as "C order":
+        # Convert the image to row-major order, also known as 'C order':
         image = np.ascontiguousarray(image)
         return image, image_raw, h, w
 
     def xywh2xyxy(self, origin_h, origin_w, x):
-        """
+        '''
         description:    Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
         param:
             origin_h:   height of original image
@@ -255,7 +255,7 @@ class YoLov5TRT(object):
             x:          A boxes numpy, each row is a box [center_x, center_y, w, h]
         return:
             y:          A boxes numpy, each row is a box [x1, y1, x2, y2]
-        """
+        '''
         y = np.zeros_like(x)
         r_w = self.input_w / origin_w
         r_h = self.input_h / origin_h
@@ -275,7 +275,7 @@ class YoLov5TRT(object):
         return y
 
     def post_process(self, output, origin_h, origin_w):
-        """
+        '''
         description: postprocess the prediction
         param:
             output:     A numpy likes [num_boxes,cx,cy,w,h,conf,cls_id, cx,cy,w,h,conf,cls_id, ...] 
@@ -285,7 +285,7 @@ class YoLov5TRT(object):
             result_boxes: finally boxes, a boxes numpy, each row is a box [x1, y1, x2, y2]
             result_scores: finally scores, a numpy, each element is the score correspoing to box
             result_classid: finally classid, a numpy, each element is the classid correspoing to box
-        """
+        '''
         # Get the num of boxes detected
         num = int(output[0])
         # Reshape to a two dimentional ndarray
@@ -298,7 +298,7 @@ class YoLov5TRT(object):
         return result_boxes, result_scores, result_classid
 
     def bbox_iou(self, box1, box2, x1y1x2y2=True):
-        """
+        '''
         description: compute the IoU of two bounding boxes
         param:
             box1: A box coordinate (can be (x1, y1, x2, y2) or (x, y, w, h))
@@ -306,7 +306,7 @@ class YoLov5TRT(object):
             x1y1x2y2: select the coordinate format
         return:
             iou: computed iou
-        """
+        '''
         if not x1y1x2y2:
             # Transform from center and width to exact coordinates
             b1_x1, b1_x2 = box1[:, 0] - box1[:, 2] / 2, box1[:, 0] + box1[:, 2] / 2
@@ -335,7 +335,7 @@ class YoLov5TRT(object):
         return iou
 
     def non_max_suppression(self, prediction, origin_h, origin_w, conf_thres=0.5, nms_thres=0.4):
-        """
+        '''
         description: Removes detections with lower object confidence score than 'conf_thres' and performs
         Non-Maximum Suppression to further filter detections.
         param:
@@ -346,7 +346,7 @@ class YoLov5TRT(object):
             nms_thres: a iou threshold to filter detections
         return:
             boxes: output after nms with the shape (x1, y1, x2, y2, conf, cls_id)
-        """
+        '''
         # Get the boxes that score > CONF_THRESH
         boxes = prediction[prediction[:, 4] >= conf_thres]
         # Trandform bbox from [center_x, center_y, w, h] to [x1, y1, x2, y2]
@@ -400,10 +400,11 @@ class warmUpThread(threading.Thread):
 
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # load custom plugin and engine
-    PLUGIN_LIBRARY = "build/libmyplugins.so"
-    engine_file_path = "build/yolov5s.engine"
+    root = '/workspace/Sat_proj/tensorrtx_trial/'
+    PLUGIN_LIBRARY = root+'tensorrtx/yolov5/build/libmyplugins.so'
+    engine_file_path = root+'tensorrtx/yolov5/build/best.engine'
 
     if len(sys.argv) > 1:
         engine_file_path = sys.argv[1]
@@ -414,25 +415,17 @@ if __name__ == "__main__":
 
     # load coco labels
 
-    categories = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-            "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-            "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-            "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-            "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-            "hair drier", "toothbrush"]
+    categories = ['chirp']
 
-    if os.path.exists('output/'):
-        shutil.rmtree('output/')
-    os.makedirs('output/')
+    if os.path.exists('output700img/'):
+        shutil.rmtree('output700img/')
+    os.makedirs('output700img/')
     # a YoLov5TRT instance
     yolov5_wrapper = YoLov5TRT(engine_file_path)
     try:
         print('batch size is', yolov5_wrapper.batch_size)
         
-        image_dir = "samples/"
+        image_dir = '/workspace/Sat_proj/data/05_04_22dB/images/train/'
         image_path_batches = get_img_path_batches(yolov5_wrapper.batch_size, image_dir)
 
         for i in range(10):
