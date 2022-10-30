@@ -392,12 +392,11 @@ class inferThread(threading.Thread):
         batch_image_raw, use_time,bbox, h, w = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image(self.image_path_batch))
         for i, img_path in enumerate(self.image_path_batch):
             parent, filename = os.path.split(img_path)
-            print(self.root)
             im_path = self.root+'build/150img_output/'
             if not os.path.exists(im_path):
                 os.mkdir(im_path)
-                os.mkdir(im_path+'/images/')
-                os.mkdir(img_path+'/labels/')
+            if not os.path.exists(im_path+'labels/'):
+                os.mkdir(im_path+'labels/'),os.mkdir(im_path+'images/')
             img_save_name = im_path+'images/'+ filename
             print(img_save_name)
             lbl_save_name = im_path+'labels/'+ filename.replace('png','txt')
