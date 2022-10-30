@@ -35,7 +35,7 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=None):
     '''
     description: Plots one bounding box on image img,
                  this function comes from YoLov5 project.
-    param: 
+    param:
         x:      a box likes [x1,y1,x2,y2]
         img:    a opencv image object
         color:  color to draw rectangle, such as (0,255,0)
@@ -178,19 +178,19 @@ class YoLov5TRT(object):
                         categories[int(result_classid[j])], result_scores[j]
                     ),
                 )
-        return batch_image_raw, end - start
+        return batch_image_raw, end - start, result_boxes, origin_h, origin_w
 
     def destroy(self):
         # Remove any context from the top of the context stack, deactivating it.
         self.ctx.pop()
-        
+
     def get_raw_image(self, image_path_batch):
         '''
         description: Read an image from image path
         '''
         for img_path in image_path_batch:
             yield cv2.imread(img_path)
-        
+
     def get_raw_image_zeros(self, image_path_batch=None):
         '''
         description: Ready data for warmup
@@ -278,7 +278,7 @@ class YoLov5TRT(object):
         '''
         description: postprocess the prediction
         param:
-            output:     A numpy likes [num_boxes,cx,cy,w,h,conf,cls_id, cx,cy,w,h,conf,cls_id, ...] 
+            output:     A numpy likes [num_boxes,cx,cy,w,h,conf,cls_id, cx,cy,w,h,conf,cls_id, ...]
             origin_h:   height of original image
             origin_w:   width of original image
         return:
@@ -302,7 +302,7 @@ class YoLov5TRT(object):
         description: compute the IoU of two bounding boxes
         param:
             box1: A box coordinate (can be (x1, y1, x2, y2) or (x, y, w, h))
-            box2: A box coordinate (can be (x1, y1, x2, y2) or (x, y, w, h))            
+            box2: A box coordinate (can be (x1, y1, x2, y2) or (x, y, w, h))
             x1y1x2y2: select the coordinate format
         return:
             iou: computed iou
@@ -372,39 +372,48 @@ class YoLov5TRT(object):
         boxes = np.stack(keep_boxes, 0) if len(keep_boxes) else np.array([])
         return boxes
 
-
-class inferThread(threading.Thread):
-    def __init__(self, yolov5_wrapper, image_path_batch):
-        threading.Thread.__init__(self)
-        self.yolov5_wrapper = yolov5_wrapper
-        self.image_path_batch = image_path_batch
-
-    def run(self):
-        batch_image_raw, use_time = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image(self.image_path_batch))
-        for i, img_path in enumerate(self.image_path_batch):
-            parent, filename = os.path.split(img_path)
-            save_name = os.path.join('output', filename)
-            # Save image
-            cv2.imwrite(save_name, batch_image_raw[i])
-        print('input->{}, time->{:.2f}ms, saving into output/'.format(self.image_path_batch, use_time * 1000))
-
-
 class warmUpThread(threading.Thread):
     def __init__(self, yolov5_wrapper):
         threading.Thread.__init__(self)
         self.yolov5_wrapper = yolov5_wrapper
 
     def run(self):
-        batch_image_raw, use_time = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image_zeros())
+        batch_image_raw, use_time,bbox, h, w = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image_zeros())
         print('warm_up->{}, time->{:.2f}ms'.format(batch_image_raw[0].shape, use_time * 1000))
 
+class inferThread(threading.Thread):
+    def __init__(self, yolov5_wrapper, image_path_batch, root):
+        threading.Thread.__init__(self)
+        self.yolov5_wrapper = yolov5_wrapper
+        self.image_path_batch = image_path_batch
+        self.root = root
+
+    def run(self):
+        batch_image_raw, use_time,bbox, h, w = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image(self.image_path_batch))
+        for i, img_path in enumerate(self.image_path_batch):
+            parent, filename = os.path.split(img_path)
+            print(self.root)
+            im_path = self.root+'build/150img_output/'
+            if not os.path.exists(im_path):
+                os.mkdir(im_path)
+                os.mkdir(im_path+'/images/')
+                os.mkdir(img_path+'/labels/')
+            img_save_name = im_path+'images/'+ filename
+            print(img_save_name)
+            lbl_save_name = im_path+'labels/'+ filename.replace('png','txt')
+
+            # Save image
+            cv2.imwrite(img_save_name, batch_image_raw[i])
+        print('input->{}, time->{:.2f}ms, saving into output/'.format(self.image_path_batch, use_time * 1000))
+            # Save label
+        print(bbox, h, w)
 
 
 if __name__ == '__main__':
     # load custom plugin and engine
-    root = '/workspace/Sat_proj/tensorrtx_trial/'
-    PLUGIN_LIBRARY = root+'tensorrtx/yolov5/build/libmyplugins.so'
-    engine_file_path = root+'tensorrtx/yolov5/build/best.engine'
+    root = '/workspace/Sat_proj/tensorrtx_trial/tensorrtx/yolov5/'
+    PLUGIN_LIBRARY = root+'build/libmyplugins.so'
+    engine_file_path = root+'build/best.engine'
 
     if len(sys.argv) > 1:
         engine_file_path = sys.argv[1]
@@ -417,15 +426,13 @@ if __name__ == '__main__':
 
     categories = ['chirp']
 
-    if os.path.exists('output700img/'):
-        shutil.rmtree('output700img/')
-    os.makedirs('output700img/')
+
     # a YoLov5TRT instance
     yolov5_wrapper = YoLov5TRT(engine_file_path)
     try:
         print('batch size is', yolov5_wrapper.batch_size)
-        
-        image_dir = '/workspace/Sat_proj/data/05_04_22dB/images/train/'
+
+        image_dir = '/workspace/Sat_proj/data/22dB_05_04_22/images/test/'
         image_path_batches = get_img_path_batches(yolov5_wrapper.batch_size, image_dir)
 
         for i in range(10):
@@ -435,7 +442,7 @@ if __name__ == '__main__':
             thread1.join()
         for batch in image_path_batches:
             # create a new thread to do inference
-            thread1 = inferThread(yolov5_wrapper, batch)
+            thread1 = inferThread(yolov5_wrapper, batch, root)
             thread1.start()
             thread1.join()
     finally:
