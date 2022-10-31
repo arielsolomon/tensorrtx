@@ -29,7 +29,6 @@ def get_img_path_batches(batch_size, img_dir):
             batch.append(os.path.join(root, name))
     if len(batch) > 0:
         ret.append(batch)
-    print('\nWTF RET?: ', ret, batch)
     return ret
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=None):
@@ -392,7 +391,6 @@ class inferThread(threading.Thread):
     def run(self):
 
         batch_image_raw, use_time,bbox, h, w, clas = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image(self.image_path_batch))
-        print('\nWidth', w, '\Height', h)
         for i, img_path in enumerate(self.image_path_batch):
             parent, filename = os.path.split(img_path)
             im_path = self.root+'build/150img_output/'
@@ -406,14 +404,68 @@ class inferThread(threading.Thread):
 
             # Save image
             cv2.imwrite(img_save_name, batch_image_raw[i])
-            # Save label at yolov5 format
+            # Save label
             lines = []
             for i,line in enumerate(bbox):
-
                 x,y,h_yolo, w_yolo = line[0]/w+np.abs(line[0]-line[2])/2/w, line[1]/h+np.abs(line[1]-line[3])/2/h, np.abs(line[0] - line[2])/w , \
                                      np.abs(line[1] - line[3])/h
-                lines.append([x,y,h_yolo, w_yolo, str(clas[i])])
+                lines.append([clas[i],x,y,h_yolo, w_yolo])
+            lines = sorted(lines)
             with open(lbl_save_name, 'w') as f:
                 for item in lines:
                     item  = ' '.join(map(str, item))
                     f.write('%s\n'% item)
+
+
+
+
+
+        #print('input->{}, time->{:.2f}ms, saving into output/'.format(self.image_path_batch, use_time * 1000))
+
+
+
+
+
+if __name__ == '__main__':
+    # load custom plugin and engine
+    root = '/workspace/Sat_proj/tensorrtx_trial/tensorrtx/yolov5/'
+    PLUGIN_LIBRARY = root+'build/libmyplugins.so'
+    engine_file_path = root+'build/best.engine'
+
+    if len(sys.argv) > 1:
+        engine_file_path = sys.argv[1]
+    if len(sys.argv) > 2:
+        PLUGIN_LIBRARY = sys.argv[2]
+
+    ctypes.CDLL(PLUGIN_LIBRARY)
+
+    # load coco labels
+
+    categories = ['chirp']
+
+
+    # a YoLov5TRT instance
+    yolov5_wrapper = YoLov5TRT(engine_file_path)
+    try:
+        print('batch size is', yolov5_wrapper.batch_size)
+
+        image_dir = '/workspace/Sat_proj/data/22dB_05_04_22/images/test/'
+        image_path_batches = get_img_path_batches(yolov5_wrapper.batch_size, image_dir)
+
+        for i in range(10):
+            # create a new thread to do warm_up
+            thread1 = warmUpThread(yolov5_wrapper)
+            thread1.start()
+            thread1.join()
+        counter = 1
+        for batch in image_path_batches:
+            # create a new thread to do inference
+            thread1 = inferThread(yolov5_wrapper, batch, root)
+            thread1.start()
+            thread1.join()
+            print('Counter: ', counter)
+            counter+=1
+        print('\nEnd of Run')
+    finally:
+        # destroy the instance
+        yolov5_wrapper.destroy()
